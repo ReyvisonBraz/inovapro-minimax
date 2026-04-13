@@ -26,7 +26,7 @@ interface CustomerListProps {
   onPageChange: (page: number) => void;
 }
 
-export const CustomerList: React.FC<CustomerListProps> = ({ 
+export const CustomerList = React.memo(function CustomerList({ 
   settings,
   customers, 
   clientPayments, 
@@ -38,7 +38,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
   setSearchTerm,
   pagination,
   onPageChange
-}) => {
+}: CustomerListProps) {
   const [filterDebt, setFilterDebt] = useState(false);
   const [sortMode, setSortMode] = useState<'name' | 'debt'>('name');
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -283,4 +283,4 @@ export const CustomerList: React.FC<CustomerListProps> = ({
       )}
     </div>
   );
-};
+});

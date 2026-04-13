@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { AppSettings } from '../types';
-import { api } from '../services/api';
+import { api } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 
 export const useAppSettings = () => {
   const { showToast } = useToast();
   const [settings, setSettings] = useState<AppSettings>({
-    appName: 'Financeiro Pro',
+    appName: 'INOVA SYS',
     fiscalYear: '2024',
     primaryColor: '#1152d4',
     categories: 'Alimentação,Trabalho,Utilidades,Viagem,Lazer,Outros',
@@ -30,8 +30,8 @@ export const useAppSettings = () => {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const data = await api.get('/api/settings');
-      if (data) setSettings(data);
+      const response = await api.get('/settings');
+      if (response.data) setSettings(response.data);
     } catch (err) {
       console.error("Failed to fetch settings", err);
       showToast("Erro ao carregar configurações.", "error");
@@ -40,7 +40,7 @@ export const useAppSettings = () => {
 
   const updateSettings = useCallback(async (newSettings: AppSettings) => {
     try {
-      await api.put('/api/settings', newSettings);
+      await api.put('/settings', newSettings);
       setSettings(newSettings);
       return true;
     } catch (err) {

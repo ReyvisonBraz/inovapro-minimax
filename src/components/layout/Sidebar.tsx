@@ -48,23 +48,20 @@ export const Sidebar = () => {
       )}
     >
       <div className={cn(
-        "p-6 flex items-center justify-between border-b border-slate-200/5",
-        isSidebarCollapsed ? "px-4 justify-center" : "px-6"
+        "p-4 flex items-center justify-between border-b border-slate-200/5",
+        isSidebarCollapsed ? "px-3 justify-center" : "px-4"
       )}>
         {!isSidebarCollapsed && (
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="font-black text-lg text-white italic">FF</span>
+            <div className="w-12 h-12 flex items-center justify-center">
+              <img src="/logos/logo.png" alt="INOVA" className="w-full h-full object-contain" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight leading-none text-white">Finance<span className="text-primary">Flow</span></span>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Sistemas de Gestão</span>
-            </div>
+            <span className="font-bold text-lg tracking-tight leading-none text-white">INOVA <span className="text-primary">SYS</span></span>
           </div>
         )}
         {isSidebarCollapsed && (
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
-            <span className="font-black text-xl text-white italic">FF</span>
+          <div className="w-10 h-10 flex items-center justify-center">
+            <img src="/logos/logo.png" alt="INOVA" className="w-full h-full object-contain" />
           </div>
         )}
         <button 

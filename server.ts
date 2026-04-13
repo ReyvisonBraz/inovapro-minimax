@@ -4,6 +4,10 @@ import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,7 +130,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    appName TEXT DEFAULT 'Financeiro Pro',
+    appName TEXT DEFAULT 'INOVA SYS',
     appVersion TEXT DEFAULT 'Versão Empresarial',
     fiscalYear TEXT DEFAULT '2024',
     primaryColor TEXT DEFAULT '#1152d4',
@@ -412,6 +416,109 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // --- Security Configuration ---
+  const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+  const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  // CORS Configuration
+  app.use(cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+
+  // Rate Limiting - Login (5 attempts per 15 minutes)
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { error: 'Muitas tentativas de login. Tente novamente em 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+
+  // Rate Limiting - General API (100 requests per minute)
+  const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 100,
+    message: { error: 'Muitas requisições. Diminua o ritmo.' }
+  });
+
+  // SQL Injection Prevention - Whitelist of sortable columns
+  const ALLOWED_SORT_COLUMNS: Record<string, string[]> = {
+    transactions: ['id', 'description', 'category', 'type', 'amount', 'date', 'createdAt'],
+    customers: ['id', 'firstName', 'lastName', 'phone', 'createdAt'],
+    service_orders: ['id', 'status', 'priority', 'entryDate', 'createdAt'],
+    client_payments: ['id', 'totalAmount', 'paidAmount', 'purchaseDate', 'dueDate', 'status'],
+    inventory_items: ['id', 'name', 'category', 'quantity', 'unitPrice'],
+    users: ['id', 'username', 'name', 'role', 'createdAt']
+  };
+
+  const validateSortParams = (sortBy: string, allowedColumns: string[], defaultColumn: string = 'id'): string => {
+    if (allowedColumns.includes(sortBy)) {
+      return sortBy;
+    }
+    return defaultColumn;
+  };
+
+  const validateOrder = (order: string): 'ASC' | 'DESC' => {
+    return order.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  };
+
+  // Auth Middleware
+  interface AuthRequest extends express.Request {
+    user?: {
+      userId: number;
+      username: string;
+      role: string;
+    };
+  }
+
+  const authMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction): void => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Token de autenticação não fornecido' });
+      return;
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as AuthRequest['user'];
+      req.user = decoded;
+      next();
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        res.status(401).json({ error: 'Token expirado' });
+        return;
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        res.status(401).json({ error: 'Token inválido' });
+        return;
+      }
+      res.status(401).json({ error: 'Falha na autenticação' });
+    }
+  };
+
+  // Role-based authorization
+  const requireRole = (...roles: string[]) => {
+    return (req: AuthRequest, res: express.Response, next: express.NextFunction): void => {
+      if (!req.user) {
+        res.status(401).json({ error: 'Não autenticado' });
+        return;
+      }
+
+      if (!roles.includes(req.user.role)) {
+        res.status(403).json({ error: 'Acesso proibido para este perfil' });
+        return;
+      }
+
+      next();
+    };
+  };
 
   // Rotas da API
 
@@ -889,27 +996,115 @@ async function startServer() {
   });
 
   // Rotas de Autenticação
-  app.post("/api/login", (req, res) => {
+  app.post("/api/login", loginLimiter, async (req, res) => {
     const { username, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
-    
-    if (user) {
-      // Parse permissions
-      try {
-        user.permissions = JSON.parse(user.permissions || '[]');
-      } catch (e) {
-        user.permissions = [];
-      }
-      
-      // Se for owner, garante todas as permissões
-      if (user.role === 'owner') {
-        user.permissions = ['view_dashboard', 'manage_transactions', 'view_reports', 'manage_customers', 'manage_payments', 'manage_settings', 'manage_users'];
-      }
 
-      res.json(user);
-    } else {
-      res.status(401).json({ error: "Credenciais inválidas" });
+    if (!username || !password) {
+      res.status(400).json({ error: 'Username e senha são obrigatórios' });
+      return;
     }
+
+    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as any;
+
+    if (!user) {
+      res.status(401).json({ error: 'Credenciais inválidas' });
+      return;
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      res.status(401).json({ error: 'Credenciais inválidas' });
+      return;
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] }
+    );
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword, token });
+  });
+
+  app.post("/api/auth/logout", authMiddleware, (req: AuthRequest, res) => {
+    res.json({ message: 'Logout realizado com sucesso' });
+  });
+
+  app.get("/api/auth/me", authMiddleware, (req: AuthRequest, res) => {
+    const user = db.prepare("SELECT id, username, name, role, permissions FROM users WHERE id = ?")
+      .get(req.user!.userId) as any;
+
+    if (!user) {
+      res.status(404).json({ error: 'Usuário não encontrado' });
+      return;
+    }
+
+    try {
+      user.permissions = JSON.parse(user.permissions || '[]');
+    } catch (e) {
+      user.permissions = [];
+    }
+
+    res.json(user);
+  });
+
+  app.put("/api/auth/change-password", authMiddleware, async (req: AuthRequest, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: 'Senhas obrigatórias' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: 'Nova senha deve ter no mínimo 6 caracteres' });
+      return;
+    }
+
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user!.userId) as any;
+
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (!match) {
+      res.status(401).json({ error: 'Senha atual incorreta' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, user.id);
+
+    res.json({ message: 'Senha alterada com sucesso' });
+  });
+
+  // Rotas de Notificações
+  app.get("/api/notifications", authMiddleware, (req: AuthRequest, res) => {
+    const upcomingPayments = db.prepare(`
+      SELECT cp.*, c.firstName, c.lastName 
+      FROM client_payments cp
+      JOIN customers c ON cp.customerId = c.id
+      WHERE cp.status IN ('pending', 'partial')
+      AND date(cp.dueDate) <= date('now', '+3 days')
+    `).all();
+
+    const staleOrders = db.prepare(`
+      SELECT * FROM service_orders 
+      WHERE status NOT IN ('Entregue', 'Cancelado', 'Concluído')
+      AND date(createdAt) <= date('now', '-7 days')
+    `).all();
+
+    const inventoryAlerts = db.prepare(`
+      SELECT * FROM inventory_items 
+      WHERE category = 'product' 
+      AND (stockLevel < minQuantity OR quantity < minQuantity)
+    `).all();
+
+    res.json({
+      payments: upcomingPayments,
+      serviceOrders: staleOrders,
+      inventory: inventoryAlerts,
+      timestamp: new Date().toISOString()
+    });
   });
 
   // Rotas de Usuários
@@ -929,11 +1124,12 @@ async function startServer() {
     res.json(usersWithPermissions);
   });
 
-  app.post("/api/users", (req, res) => {
+  app.post("/api/users", async (req, res) => {
     const { username, password, role, name, permissions } = req.body;
     try {
+      const hashedPassword = await bcrypt.hash(password, 10);
       const permsString = JSON.stringify(permissions || []);
-      const result = db.prepare("INSERT INTO users (username, password, role, name, permissions) VALUES (?, ?, ?, ?, ?)").run(username, password, role, name, permsString);
+      const result = db.prepare("INSERT INTO users (username, password, role, name, permissions) VALUES (?, ?, ?, ?, ?)").run(username, hashedPassword, role, name, permsString);
       
       // Log action
       db.prepare("INSERT INTO audit_logs (userId, action, entity, entityId, details) VALUES (?, ?, ?, ?, ?)").run(1, 'create', 'user', result.lastInsertRowid, `Created user ${username}`);
@@ -944,14 +1140,15 @@ async function startServer() {
     }
   });
 
-  app.put("/api/users/:id", (req, res) => {
+  app.put("/api/users/:id", async (req, res) => {
     const { name, role, password, permissions } = req.body;
     
     try {
       const permsString = JSON.stringify(permissions || []);
       
       if (password) {
-        db.prepare("UPDATE users SET name = ?, role = ?, password = ?, permissions = ? WHERE id = ?").run(name, role, password, permsString, req.params.id);
+        const hashedPassword = await bcrypt.hash(password, 10);
+        db.prepare("UPDATE users SET name = ?, role = ?, password = ?, permissions = ? WHERE id = ?").run(name, role, hashedPassword, permsString, req.params.id);
       } else {
         db.prepare("UPDATE users SET name = ?, role = ?, permissions = ? WHERE id = ?").run(name, role, permsString, req.params.id);
       }
@@ -998,6 +1195,15 @@ async function startServer() {
   app.get("/api/inventory", (req, res) => {
     const items = db.prepare("SELECT * FROM inventory_items ORDER BY name ASC").all();
     res.json(items);
+  });
+
+  app.get("/api/inventory/alerts", (req, res) => {
+    const alerts = db.prepare(`
+      SELECT * FROM inventory_items 
+      WHERE category = 'product' 
+      AND (stockLevel < minQuantity OR quantity < minQuantity)
+    `).all();
+    res.json(alerts);
   });
 
   app.post("/api/inventory", (req, res) => {

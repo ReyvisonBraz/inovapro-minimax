@@ -15,21 +15,31 @@ interface AuthState {
   setAuditLogs: (logs: AuditLog[]) => void;
 }
 
+const checkAuth = () => {
+  const token = localStorage.getItem('token');
+  const userStr = localStorage.getItem('user');
+  return !!token && !!userStr;
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  isAuthenticated: localStorage.getItem('isAuthenticated') === 'true',
-  currentUser: localStorage.getItem('currentUser') ? JSON.parse(localStorage.getItem('currentUser')!) : null,
+  isAuthenticated: checkAuth(),
+  currentUser: (() => {
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
+  })(),
   users: [],
   auditLogs: [],
   
   login: (user) => {
     localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('currentUser', JSON.stringify(user));
+    localStorage.setItem('user', JSON.stringify(user));
     set({ isAuthenticated: true, currentUser: user });
   },
   
   logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('currentUser');
     set({ isAuthenticated: false, currentUser: null });
   },
   

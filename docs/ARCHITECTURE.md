@@ -57,10 +57,33 @@ Atualmente, o projeto utiliza **SQLite** (`better-sqlite3`) para persistência l
 ---
 
 ## 5. Segurança e Auditoria
-- **Autenticação:** Sistema de login baseado em usuários locais com níveis de permissão (Dono, Gerente, Funcionário).
-- **Auditoria:** Todas as ações críticas (criar, editar, excluir) geram um registro em `audit_logs` para rastreabilidade.
-- **Validação:** Todas as entradas de dados na API são validadas via **Zod** no servidor.
+
+### Autenticação
+- **JWT (JSON Web Tokens):** Autenticação stateless com tokens que expiram em 7 dias
+- **bcrypt:** Hash de senhas com salt rounds = 10
+- **Login rate limiting:** 5 tentativas por IP a cada 15 minutos
+
+### Autorização
+- **Roles:** owner, manager, employee
+- **Permissões granulares:** Cada role tem permissões específicas (CRUD por recurso)
+- **Middleware:** `authMiddleware` e `requireRole` em `server.ts`
+
+### Proteção
+- **CORS:** Configurado para permitir apenas `FRONTEND_URL`
+- **Rate Limiting API:** 100 requests por minuto por IP
+- **SQL Injection Prevention:** Whitelist de colunas para ORDER BY
+- **Validação:** Zod schemas para todas as entradas
+
+### Auditoria
+- Todas as ações críticas (criar, editar, excluir) geram um registro em `audit_logs` para rastreabilidade.
+
+### Variáveis de Ambiente
+```
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=7d
+FRONTEND_URL=http://localhost:5173
+```
 
 ---
-**Versão:** 1.0.0
+**Versão:** 1.1.0
 **Data:** Abril de 2026

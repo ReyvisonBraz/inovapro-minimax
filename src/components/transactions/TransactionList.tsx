@@ -25,7 +25,7 @@ interface TransactionListProps {
   onWhatsAppReminder?: (tx: Transaction) => void;
 }
 
-export const TransactionList = ({
+export const TransactionList = React.memo(function TransactionList({
   filteredTransactions,
   handleDuplicateTransaction,
   pagination,
@@ -35,7 +35,7 @@ export const TransactionList = ({
   onDeleteTransaction,
   onAddNewTransaction,
   onWhatsAppReminder
-}: TransactionListProps) => {
+}: TransactionListProps) {
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'Alimentação': return <Coffee size={16} />;
@@ -283,4 +283,4 @@ export const TransactionList = ({
       />
     </div>
   );
-};
+});

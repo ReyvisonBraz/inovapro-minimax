@@ -33,7 +33,7 @@ interface ServiceOrderListProps {
   onGeneratePayment?: (order: any) => void;
 }
 
-export const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
+export const ServiceOrderList = React.memo(function ServiceOrderList({
   filteredOrders,
   visibleColumns,
   quickStatusOrder,
@@ -54,7 +54,7 @@ export const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   pagination,
   onPageChange,
   onGeneratePayment
-}) => {
+}: ServiceOrderListProps) {
   return (
     <>
       <div className={cn(
@@ -109,4 +109,4 @@ export const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
       />
     </>
   );
-};
+});

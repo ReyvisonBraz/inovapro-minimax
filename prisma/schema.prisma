@@ -3,25 +3,27 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql" // Preparado para Supabase/Render
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Transaction {
   id          Int      @id @default(autoincrement())
   description String
   category    String
-  type        String   // 'income' | 'expense'
+  type        String
   amount      Float
   date        String
   status      String   @default("Concluído")
   createdBy   Int?
   updatedBy   Int?
+  paymentId   Int?
+  saleId      String?
 }
 
 model Settings {
   id                      Int     @id @default(1)
-  appName                 String? @default("Financeiro Pro")
+  appName                 String? @default("INOVA SYS")
   appVersion              String? @default("Versão Empresarial")
   fiscalYear              String? @default("2024")
   primaryColor            String? @default("#1152d4")
@@ -76,6 +78,7 @@ model ClientPayment {
   status            String?  @default("pending")
   installmentsCount Int?     @default(1)
   type              String?  @default("income")
+  saleId            String?
   paymentHistory    String?  @default("[]")
   createdBy         Int?
   updatedBy         Int?
@@ -86,7 +89,7 @@ model ClientPayment {
 model Category {
   id   Int    @id @default(autoincrement())
   name String
-  type String // 'income' | 'expense'
+  type String
 }
 
 model Receipt {
@@ -122,7 +125,7 @@ model AuditLog {
 model InventoryItem {
   id          Int      @id @default(autoincrement())
   name        String
-  category    String   // 'product' | 'service'
+  category    String
   sku         String?
   unitPrice   Float
   costPrice   Float?   @default(0)
@@ -146,9 +149,10 @@ model ServiceOrder {
   reportedProblem    String?
   arrivalPhotoUrl    String?
   arrivalPhotoBase64 String?
-  status             String?  @default("awaiting_diagnosis")
+  status             String?  @default("Aguardando Análise")
   technicalAnalysis  String?
   servicesPerformed  String?
+  services           String?  @default("[]")
   partsUsed          String?  @default("[]")
   serviceFee         Float?   @default(0)
   totalAmount        Float?   @default(0)
